@@ -2,7 +2,7 @@ class ScriptDataModel {
   final String action;
   final dynamic data;
 
-  ScriptDataModel({this.action, this.data});
+  ScriptDataModel({required this.action, required this.data});
 
   ScriptDataModel.fromJson(Map map)
       : action = map['action'],
@@ -13,7 +13,7 @@ class TabModel {
   final String link;
   final String name;
 
-  TabModel({this.link, this.name});
+  TabModel({required this.link, required this.name});
 
   TabModel.fromJson(Map map)
       : link = map['link'],
@@ -25,7 +25,7 @@ class NewsModel {
   final String title;
   final String desc;
 
-  NewsModel({this.thumbnail, this.title, this.desc});
+  NewsModel({required this.thumbnail, required this.title, required this.desc});
 
   NewsModel.fromJson(Map map)
       : thumbnail = map['thumbnail'],

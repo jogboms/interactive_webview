@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:interactive_webview/interactive_webview.dart';
-import 'package:interactive_webview_example/models.dart';
+import 'package:example/models.dart';
 
 class NewsPage extends StatefulWidget {
   @override
@@ -11,8 +11,8 @@ class NewsPage extends StatefulWidget {
 class _NewsPageState extends State<NewsPage> {
   final _webView = InteractiveWebView();
 
-  var _tabs = List<TabModel>();
-  var _news = List<NewsModel>();
+  var _tabs = <TabModel>[];
+  var _news = <NewsModel>[];
 
   @override
   void initState() {
@@ -35,20 +35,15 @@ class _NewsPageState extends State<NewsPage> {
     switch (scriptModel.action) {
       case "ready":
         setState(() {
-          _tabs = (scriptModel.data as List)
-              .map((data) => TabModel.fromJson(data))
-              .toList();
+          _tabs = (scriptModel.data as List).map((data) => TabModel.fromJson(data)).toList();
         });
 
-        if (_tabs.length > 0)
-          _webView.evalJavascript("loadNews(`${_tabs[0].link}`);");
+        if (_tabs.length > 0) _webView.evalJavascript("loadNews(`${_tabs[0].link}`);");
         break;
 
       case "loadNews":
         setState(() {
-          _news = (scriptModel.data as List)
-              .map((data) => NewsModel.fromJson(data))
-              .toList();
+          _news = (scriptModel.data as List).map((data) => NewsModel.fromJson(data)).toList();
         });
         break;
     }
@@ -56,8 +51,7 @@ class _NewsPageState extends State<NewsPage> {
 
   _onFinish() async {
     // inject our script in
-    final script =
-        await rootBundle.loadString("assets/injection.js", cache: false);
+    final script = await rootBundle.loadString("assets/injection.js", cache: false);
     _webView.evalJavascript(script);
     _webView.evalJavascript("getReady();");
   }
@@ -127,14 +121,14 @@ class _TabBar extends StatefulWidget {
   final List<TabModel> tabs;
   final Function(TabModel) tabIndexChanged;
 
-  const _TabBar({this.tabs, this.tabIndexChanged});
+  const _TabBar({required this.tabs, required this.tabIndexChanged});
 
   @override
   _TabBarState createState() => _TabBarState();
 }
 
 class _TabBarState extends State<_TabBar> {
-  TabModel _selectedTab;
+  TabModel? _selectedTab;
 
   @override
   Widget build(BuildContext context) {
@@ -147,9 +141,8 @@ class _TabBarState extends State<_TabBar> {
               i,
               Flexible(
                 child: _Tab(
-                  isSelected: _selectedTab == null
-                      ? i == 0
-                      : widget.tabs.indexOf(_selectedTab) == i,
+                  isSelected:
+                      _selectedTab == null ? i == 0 : widget.tabs.indexOf(_selectedTab!) == i,
                   model: tab,
                   onPressed: () {
                     widget.tabIndexChanged(tab);
@@ -173,11 +166,11 @@ class _Tab extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onPressed;
 
-  const _Tab({this.isSelected, this.model, this.onPressed});
+  const _Tab({required this.isSelected, required this.model, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
-    return FlatButton(
+    return TextButton(
       onPressed: onPressed,
       child: Text(
         model.name.toUpperCase(),
