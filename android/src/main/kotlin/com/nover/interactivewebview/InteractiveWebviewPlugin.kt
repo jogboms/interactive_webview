@@ -13,11 +13,13 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import io.flutter.plugin.common.PluginRegistry.Registrar
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -26,22 +28,49 @@ enum class CallMethod {
     setOptions, evalJavascript, loadHTML, loadUrl
 }
 
-class InteractiveWebviewPlugin(activity: Activity): MethodCallHandler {
+class InteractiveWebviewPlugin : MethodCallHandler, FlutterPlugin, ActivityAware {
+    private lateinit var webView: WebView
+    private lateinit var channel: MethodChannel
+    private lateinit var webClient: InteractiveWebViewClient
 
-    companion object {
-        lateinit var channel: MethodChannel
-
-        @JvmStatic
-        fun registerWith(registrar: Registrar) {
-            channel = MethodChannel(registrar.messenger(), "interactive_webview")
-            channel.setMethodCallHandler(InteractiveWebviewPlugin(registrar.activity()))
-        }
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        channel = MethodChannel(binding.binaryMessenger, "interactive_webview")
+        channel.setMethodCallHandler(this)
+        webView = WebView(binding.applicationContext)
+        webClient = InteractiveWebViewClient(listOf(), channel)
     }
 
-    private val webView = WebView(activity)
-    private val webClient = InteractiveWebViewClient(listOf())
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        webView.destroy()
+        channel.setMethodCallHandler(null)
+    }
 
-    init {
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        initializeWebView(binding.activity)
+    }
+
+    override fun onDetachedFromActivity() {}
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        onAttachedToActivity(binding)
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {
+        onDetachedFromActivity()
+    }
+
+    override fun onMethodCall(call: MethodCall, result: Result) {
+        when (CallMethod.valueOf(call.method)) {
+            CallMethod.setOptions -> setOptions(call)
+            CallMethod.evalJavascript -> evalJavascript(call)
+            CallMethod.loadHTML -> loadHTML(call)
+            CallMethod.loadUrl -> loadUrl(call)
+        }
+
+        result.success(null)
+    }
+
+    private fun initializeWebView(activity: Activity) {
         val params = FrameLayout.LayoutParams(0, 0)
         val decorView = activity.window.decorView as FrameLayout
         decorView.addView(webView, params)
@@ -56,20 +85,10 @@ class InteractiveWebviewPlugin(activity: Activity): MethodCallHandler {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         webView.settings.allowFileAccessFromFileURLs = true
-        webView.addJavascriptInterface(JsInterface(), "native")
-        webView.webViewClient = webClient
-    }
-
-    override fun onMethodCall(call: MethodCall, result: Result): Unit {
-        val method = CallMethod.valueOf(call.method)
-        when (method) {
-            CallMethod.setOptions -> setOptions(call)
-            CallMethod.evalJavascript -> evalJavascript(call)
-            CallMethod.loadHTML -> loadHTML(call)
-            CallMethod.loadUrl -> loadUrl(call)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            webView.addJavascriptInterface(JsInterface(channel), "native")
         }
-
-        result.success(null)
+        webView.webViewClient = webClient
     }
 
     private fun setOptions(call: MethodCall) {
@@ -111,22 +130,24 @@ class InteractiveWebviewPlugin(activity: Activity): MethodCallHandler {
     }
 }
 
-class InteractiveWebViewClient(var restrictedSchemes: List<String>): WebViewClient() {
+class InteractiveWebViewClient(var restrictedSchemes: List<String>, private val channel: MethodChannel) :
+    WebViewClient() {
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         val data = hashMapOf<String, Any>()
         data["url"] = url!!
         data["type"] = "didStart"
-        InteractiveWebviewPlugin.channel.invokeMethod("stateChanged", data)
+        channel.invokeMethod("stateChanged", data)
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
         val data = hashMapOf<String, Any>()
         data["url"] = url!!
         data["type"] = "didFinish"
-        InteractiveWebviewPlugin.channel.invokeMethod("stateChanged", data)
+        channel.invokeMethod("stateChanged", data)
     }
 
+    @Deprecated("Deprecated in Java")
     override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
         return shouldOverrideUrlLoading(url)
     }
@@ -148,7 +169,7 @@ class InteractiveWebViewClient(var restrictedSchemes: List<String>): WebViewClie
     }
 }
 
-class JsInterface {
+class JsInterface(private val channel: MethodChannel) {
 
     @JavascriptInterface
     fun postMessage(data: String?) {
@@ -162,10 +183,12 @@ class JsInterface {
                         val jsonObj = JSONObject(it)
                         message["data"] = toMap(jsonObj)
                     }
+
                     '[' -> {
                         val jsonArray = JSONArray(it)
                         message["data"] = toList(jsonArray)
                     }
+
                     else -> message["data"] = it
                 }
             } catch (e: JSONException) {
@@ -173,7 +196,7 @@ class JsInterface {
             }
 
             Handler(Looper.getMainLooper()).post {
-                InteractiveWebviewPlugin.channel.invokeMethod("didReceiveMessage", message)
+                channel.invokeMethod("didReceiveMessage", message)
             }
         }
     }
